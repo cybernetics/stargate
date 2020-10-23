@@ -17,7 +17,6 @@ package io.stargate.api.sql.server.avatica;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 
 import com.datastax.oss.driver.api.core.uuid.Uuids;
@@ -27,7 +26,9 @@ import io.stargate.api.sql.AbstractDataStoreTest;
 import io.stargate.api.sql.schema.TypeUtils;
 import io.stargate.api.sql.server.avatica.SerializingTestDriver.SerializationParams;
 import io.stargate.auth.AuthenticationService;
+import io.stargate.auth.StoredCredentials;
 import io.stargate.auth.UnauthorizedException;
+import io.stargate.db.datastore.DataStore;
 import io.stargate.db.schema.Column;
 import java.sql.Connection;
 import java.sql.Date;
@@ -49,14 +50,15 @@ import org.mockito.Mockito;
 
 public class StargateMetaTest extends AbstractDataStoreTest {
 
-  private static final String TEST_PASSWORD = "test_password";
+  private static final String TEST_USER = "test_validated_user";
+  private static final String TEST_PASSWORD = "test_token";
 
   private final AuthenticationService authenticator;
 
   public StargateMetaTest() throws Exception {
     authenticator = Mockito.mock(AuthenticationService.class);
-    Mockito.when(authenticator.createToken(Mockito.anyString(), Mockito.eq(TEST_PASSWORD)))
-        .thenReturn("token");
+    Mockito.when(authenticator.validateToken(Mockito.eq(TEST_PASSWORD)))
+        .thenReturn(new StoredCredentials().roleName(TEST_USER));
   }
 
   public static Stream<Arguments> allColumnParams() {
@@ -75,7 +77,12 @@ public class StargateMetaTest extends AbstractDataStoreTest {
   private Connection newConnection(SerializationParams ser, String user, String password)
       throws SQLException {
     return SerializingTestDriver.newConnection(
-        ser, new StargateMeta(dataStore, authenticator), user, password);
+        ser, new StargateMeta(this::dataStore, authenticator), user, password);
+  }
+
+  private DataStore dataStore(String username) {
+    assertThat(username).isEqualTo(TEST_USER);
+    return dataStore;
   }
 
   @ParameterizedTest
@@ -87,13 +94,11 @@ public class StargateMetaTest extends AbstractDataStoreTest {
   @ParameterizedTest
   @EnumSource(SerializationParams.class)
   public void openConnectionWithWrongCredentials(SerializationParams ser) throws Exception {
-    Mockito.when(authenticator.createToken(anyString(), eq("bad_password")))
+    Mockito.when(authenticator.validateToken(eq("bad_token")))
         .thenThrow(new UnauthorizedException("test-message"));
-    assertThatThrownBy(() -> newConnection(ser, "test_user", "bad_password"))
+    assertThatThrownBy(() -> newConnection(ser, "test_user", "bad_token"))
         .hasMessageContaining("test-message");
     assertThatThrownBy(() -> newConnection(ser, "test_user", null))
-        .hasMessageContaining("Missing credentials in connection properties");
-    assertThatThrownBy(() -> newConnection(ser, null, TEST_PASSWORD))
         .hasMessageContaining("Missing credentials in connection properties");
   }
 

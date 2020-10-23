@@ -16,7 +16,9 @@
 package io.stargate.api.sql.server.avatica;
 
 import com.google.common.collect.ImmutableList;
+import io.stargate.api.sql.server.DataStoreFactory;
 import io.stargate.auth.AuthenticationService;
+import io.stargate.auth.StoredCredentials;
 import io.stargate.auth.UnauthorizedException;
 import io.stargate.db.datastore.DataStore;
 import java.util.Collections;
@@ -34,11 +36,11 @@ public class StargateMeta implements Meta {
 
   private final ConcurrentMap<String, Connection> connections = new ConcurrentHashMap<>();
 
-  private final DataStore dataStore;
+  private final DataStoreFactory dataStoreFactory;
   private final AuthenticationService authenticator;
 
-  public StargateMeta(DataStore dataStore, AuthenticationService authenticator) {
-    this.dataStore = dataStore;
+  public StargateMeta(DataStoreFactory dataStoreFactory, AuthenticationService authenticator) {
+    this.dataStoreFactory = dataStoreFactory;
     this.authenticator = authenticator;
   }
 
@@ -46,19 +48,21 @@ public class StargateMeta implements Meta {
     connections.computeIfAbsent(
         ch.id,
         sid -> {
-          String username = info.get("user");
+          String username;
           String password = info.get("password");
-          if (username == null || password == null) {
+          if (password == null) {
             throw new IllegalArgumentException("Missing credentials in connection properties.");
           }
 
           try {
-            authenticator.createToken(username, password);
+            StoredCredentials credentials = authenticator.validateToken(password);
+            username = credentials.getRoleName();
           } catch (UnauthorizedException e) {
             throw new IllegalArgumentException(e);
           }
 
-          return new Connection(ch);
+          DataStore dataStore = dataStoreFactory.create(username);
+          return new Connection(dataStore, ch);
         });
   }
 
@@ -282,7 +286,7 @@ public class StargateMeta implements Meta {
   public StatementHandle prepare(ConnectionHandle ch, String sql, long maxRowCount) {
     try {
       Connection connection = connection(ch);
-      return connection.newStatement(sql, dataStore);
+      return connection.newStatement(sql);
     } catch (Exception e) {
       throw new IllegalArgumentException(e);
     }
@@ -379,7 +383,7 @@ public class StargateMeta implements Meta {
   public StatementHandle createStatement(ConnectionHandle ch) {
     try {
       Connection connection = connection(ch);
-      return connection.newStatement(dataStore);
+      return connection.newStatement();
     } catch (Exception e) {
       throw new IllegalArgumentException(e);
     }
