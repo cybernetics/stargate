@@ -276,9 +276,7 @@ public class FieldTypeCachesTest {
         arguments(new ColumnType[] {Type.Text, Type.Uuid}, "StringUuid"),
         arguments(new ColumnType[] {Type.Uuid, Type.Set.of(Column.Type.Double)}, "UuidListFloat"),
         arguments(
-            new ColumnType[] {
-                Type.Uuid,
-                Type.Map.of(Type.Timeuuid, Column.Type.Double)},
+            new ColumnType[] {Type.Uuid, Type.Map.of(Type.Timeuuid, Column.Type.Double)},
             "UuidListEntryTimeUuidKeyFloatValue(Input)?"),
         arguments(new ColumnType[] {Type.Int, Type.Timeuuid}, "IntTimeUuid"),
         arguments(new ColumnType[] {Type.Double}, "Float"),
